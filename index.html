@@ -136,9 +136,8 @@ const postos = [
 let currentPage = 0;
 const totalPages = postos.length + 1;
 const app = document.getElementById('app');
-
-// Logo (caminho ou base64)
-const logoURL = "logo-nascentes.png"; // ajuste o caminho
+const logoURL = "logo-nascentes.png"; // ajuste conforme necessário
+const signaturePads = new Map();
 
 // Cria páginas dos postos
 postos.forEach((posto,index)=>{
@@ -171,8 +170,7 @@ postos.forEach((posto,index)=>{
   app.appendChild(page);
 });
 
-const signaturePads = new Map();
-
+// Mostrar página atual
 function showPage(pageNum){
   document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));
   const pageToShow = document.querySelector(`.page[data-page="${pageNum}"]`);
@@ -190,9 +188,9 @@ function showPage(pageNum){
 
 showPage(currentPage);
 
+// Preencher data e hora
 const dataInput = document.getElementById('data');
 const horaInput = document.getElementById('hora');
-
 function setCurrentDateTime(){
   const now = new Date();
   dataInput.value = now.toISOString().split('T')[0];
@@ -200,6 +198,7 @@ function setCurrentDateTime(){
 }
 setCurrentDateTime();
 
+// Avançar página
 document.getElementById('btnProximo').addEventListener('click',()=>{
   const assuntos = document.getElementById('assuntosTratados').value.trim();
   const colaboradores = document.getElementById('colaboradoresPresentes').value.trim();
@@ -213,6 +212,7 @@ document.getElementById('btnProximo').addEventListener('click',()=>{
   showPage(currentPage);
 });
 
+// Classe SignaturePad com pointer events
 class SignaturePadWrapper{
   constructor(canvas){
     this.canvas=canvas;
@@ -235,46 +235,51 @@ class SignaturePadWrapper{
     this.ctx.lineWidth=2;
   }
   attachEvents(){
-    this.canvas.addEventListener('mousedown',e=>this.startDrawing(e));
-    this.canvas.addEventListener('mousemove',e=>this.draw(e));
-    this.canvas.addEventListener('mouseup',()=>this.stopDrawing());
-    this.canvas.addEventListener('mouseout',()=>this.stopDrawing());
-
-    this.canvas.addEventListener('touchstart',e=>{e.preventDefault();this.startDrawing(e.touches[0]);},{passive:false});
-    this.canvas.addEventListener('touchmove',e=>{e.preventDefault();this.draw(e.touches[0]);},{passive:false});
-    this.canvas.addEventListener('touchend',e=>{e.preventDefault();this.stopDrawing();},{passive:false});
-    this.canvas.addEventListener('touchcancel',e=>{e.preventDefault();this.stopDrawing();},{passive:false});
+    ['pointerdown','pointermove','pointerup','pointerleave'].forEach(evt=>{
+      this.canvas.addEventListener(evt,e=>{
+        e.preventDefault();
+        if(evt==='pointerdown') this.startDrawing(e);
+        if(evt==='pointermove') this.draw(e);
+        if(evt==='pointerup'||evt==='pointerleave') this.stopDrawing();
+      });
+    });
   }
-  startDrawing(e){e.preventDefault();this.isDrawing=true;const rect=this.canvas.getBoundingClientRect();this.lastX=e.clientX-rect.left;this.lastY=e.clientY-rect.top;}
-  draw(e){if(!this.isDrawing)return;e.preventDefault();const rect=this.canvas.getBoundingClientRect();const x=e.clientX-rect.left;const y=e.clientY-rect.top;this.ctx.beginPath();this.ctx.moveTo(this.lastX,this.lastY);this.ctx.lineTo(x,y);this.ctx.stroke();this.lastX=x;this.lastY=y;}
+  startDrawing(e){
+    this.isDrawing=true;
+    const rect=this.canvas.getBoundingClientRect();
+    this.lastX=e.clientX-rect.left;
+    this.lastY=e.clientY-rect.top;
+  }
+  draw(e){
+    if(!this.isDrawing) return;
+    const rect=this.canvas.getBoundingClientRect();
+    const x=e.clientX-rect.left;
+    const y=e.clientY-rect.top;
+    this.ctx.beginPath();
+    this.ctx.moveTo(this.lastX,this.lastY);
+    this.ctx.lineTo(x,y);
+    this.ctx.stroke();
+    this.lastX=x;
+    this.lastY=y;
+  }
   stopDrawing(){this.isDrawing=false;}
   clear(){this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);}
   isEmpty(){const blank=document.createElement('canvas');blank.width=this.canvas.width;blank.height=this.canvas.height;return this.canvas.toDataURL()===blank.toDataURL();}
   toDataURL(){return this.canvas.toDataURL('image/png');}
 }
 
-function setupAlteracaoSelects(){
-  document.querySelectorAll('.alteracao-select').forEach(select=>{
-    select.addEventListener('change',e=>{
-      const val=e.target.value;
-      const parent=e.target.closest('section.page');
-      const area=parent.querySelector('.alteracao-area');
-      if(val==='sim'){
-        area.classList.remove('hidden');
-        area.querySelector('textarea').required=true;
-      }else{
-        area.classList.add('hidden');
-        const ta=area.querySelector('textarea');
-        ta.value='';
-        ta.required=false;
-        const fileInput=area.querySelector('input[type=file]');
-        fileInput.value='';
-      }
-    });
+// Área de alteração
+document.querySelectorAll('.alteracao-select').forEach(select=>{
+  select.addEventListener('change',e=>{
+    const val=e.target.value;
+    const parent=e.target.closest('section.page');
+    const area=parent.querySelector('.alteracao-area');
+    if(val==='sim'){area.classList.remove('hidden');area.querySelector('textarea').required=true;}
+    else{area.classList.add('hidden');area.querySelector('textarea').value='';area.querySelector('textarea').required=false;area.querySelector('input[type=file]').value='';}
   });
-}
-setupAlteracaoSelects();
+});
 
+// Ler arquivos imagem
 function readFileAsDataURL(file){
   return new Promise((resolve,reject)=>{
     const reader=new FileReader();
@@ -284,11 +289,12 @@ function readFileAsDataURL(file){
   });
 }
 
+// Gerar PDF
 async function gerarPDF(){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const margin = 15;
-  let y = 30; 
+  let y = 30;
   const lineHeight = 7;
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -308,16 +314,11 @@ async function gerarPDF(){
   }
 
   function addPageIfNeeded(extraHeight=0){
-    if(y+extraHeight>pageHeight-margin){
-      doc.addPage();
-      y=30;
-      addLogo();
-    }
+    if(y+extraHeight>pageHeight-margin){doc.addPage();y=30;addLogo();}
   }
 
   function addText(text,fontSize=12,fontStyle='normal'){
-    doc.setFontSize(fontSize);
-    doc.setFont(undefined,fontStyle);
+    doc.setFontSize(fontSize);doc.setFont(undefined,fontStyle);
     const splitText=doc.splitTextToSize(text,pageWidth-margin*2);
     addPageIfNeeded(splitText.length*lineHeight);
     doc.text(splitText,margin,y);
@@ -325,18 +326,17 @@ async function gerarPDF(){
   }
 
   function addTitle(text){
-    doc.setFontSize(16);
-    doc.setFont(undefined,'bold');
+    doc.setFontSize(16);doc.setFont(undefined,'bold');
     addPageIfNeeded(lineHeight*2);
     doc.text(text,pageWidth/2,y,{align:'center'});
     y+=lineHeight*2;
-    doc.setDrawColor(0);
-    doc.setLineWidth(0.5);
+    doc.setDrawColor(0);doc.setLineWidth(0.5);
     doc.line(margin,y-4,pageWidth-margin,y-4);
   }
 
   await addLogo();
   addTitle('Preleção Diária');
+
   const assuntos = document.getElementById('assuntosTratados').value.trim();
   const colaboradores = document.getElementById('colaboradoresPresentes').value.trim();
   const dataVal = document.getElementById('data').value;
@@ -351,9 +351,7 @@ async function gerarPDF(){
   addText(`Colaboradores Presentes:\n${colaboradores}`);
 
   for(let i=0;i<postos.length;i++){
-    doc.addPage();
-    y=30;
-    await addLogo();
+    doc.addPage();y=30;await addLogo();
     addTitle(`Posto: ${postos[i]}`);
     const page = document.querySelector(`.page[data-page="${i+1}"]`);
     const alteracaoSelect = page.querySelector('.alteracao-select');
@@ -363,29 +361,22 @@ async function gerarPDF(){
     if(alteracaoVal==='sim'){
       const descricao = page.querySelector('.descricao-alteracao').value.trim();
       addText(`Descrição da alteração:\n${descricao}`);
-
       const fileInput = page.querySelector('input.input-imagem-alteracao');
       if(fileInput.files.length>0){
         for(let f=0;f<fileInput.files.length;f++){
-          const file = fileInput.files[f];
+          const file=fileInput.files[f];
           if(!file.type.startsWith('image/')) continue;
           const imgData = await readFileAsDataURL(file);
           const img = new Image();
           img.src = imgData;
           await new Promise(res=>img.onload=res);
-
           const maxWidth = pageWidth-margin*2;
           let imgWidth = img.width;
           let imgHeight = img.height;
-          if(imgWidth>maxWidth){
-            const ratio=maxWidth/imgWidth;
-            imgWidth=maxWidth;
-            imgHeight*=ratio;
-          }
-
+          if(imgWidth>maxWidth){const ratio=maxWidth/imgWidth;imgWidth=maxWidth;imgHeight*=ratio;}
           addPageIfNeeded(imgHeight+lineHeight);
-                   doc.addImage(imgData, 'JPEG', margin, y, imgWidth, imgHeight);
-          y += imgHeight + lineHeight;
+          doc.addImage(imgData,'JPEG',margin,y,imgWidth,imgHeight);
+          y+=imgHeight+lineHeight;
         }
       }
     }
@@ -393,72 +384,46 @@ async function gerarPDF(){
     const colaborador = page.querySelector('.nome-colaborador').value.trim();
     addText(`Colaborador que assumiu: ${colaborador}`);
 
-    // Inserir assinatura
     const canvas = page.querySelector('canvas.signature-pad');
     const pad = signaturePads.get(canvas);
     if(pad && !pad.isEmpty()){
       const sigImg = pad.toDataURL();
       const img = new Image();
       img.src = sigImg;
-      await new Promise(res => img.onload = res);
+      await new Promise(res => img.onload=res);
       const sigWidthMax = 150;
       const ratio = sigWidthMax / img.width;
       const sigWidth = sigWidthMax;
-      const sigHeight = img.height * ratio;
-      addPageIfNeeded(sigHeight + lineHeight);
-      doc.addImage(sigImg, 'PNG', margin, y, sigWidth, sigHeight);
-      y += sigHeight + lineHeight;
-    } else {
-      addText("(Sem assinatura)");
-    }
+      const sigHeight = img.height*ratio;
+      addPageIfNeeded(sigHeight+lineHeight);
+      doc.addImage(sigImg,'PNG',margin,y,sigWidth,sigHeight);
+      y+=sigHeight+lineHeight;
+    } else {addText('(Sem assinatura)');}
   }
 
-  // Salvar PDF
   doc.save(`Prelecao_Diaria_${dataInput.value}.pdf`);
 }
 
 // Botões próximos nos postos
-app.addEventListener('click', e => {
+app.addEventListener('click',e=>{
   if(e.target.classList.contains('btn-next-posto')){
     const pageNum = parseInt(e.target.closest('section.page').dataset.page);
     const page = document.querySelector(`.page[data-page="${pageNum}"]`);
     const alteracaoSelect = page.querySelector('.alteracao-select');
-
-    if(!alteracaoSelect.value){
-      alert('Por favor, selecione se houve alteração.');
-      return;
-    }
+    if(!alteracaoSelect.value){alert('Selecione se houve alteração.');return;}
     if(alteracaoSelect.value==='sim'){
       const desc = page.querySelector('.descricao-alteracao');
-      if(!desc.value.trim()){
-        alert('Por favor, descreva a alteração.');
-        return;
-      }
+      if(!desc.value.trim()){alert('Descreva a alteração.');return;}
     }
     const colaborador = page.querySelector('.nome-colaborador');
-    if(!colaborador.value.trim()){
-      alert('Por favor, informe o nome do colaborador que está assumindo o posto.');
-      return;
-    }
-
-    // assinatura obrigatória
+    if(!colaborador.value.trim()){alert('Informe o nome do colaborador.');return;}
     const canvas = page.querySelector('canvas.signature-pad');
     const pad = signaturePads.get(canvas);
-    if(pad.isEmpty()){
-      alert('Por favor, assine para prosseguir.');
-      return;
-    }
-
-    if(pageNum < totalPages - 1){
-      currentPage++;
-      showPage(currentPage);
-    } else {
-      gerarPDF();
-    }
+    if(pad.isEmpty()){alert('Assine para prosseguir.');return;}
+    if(pageNum<totalPages-1){currentPage++;showPage(currentPage);} else{gerarPDF();}
   }
 });
 </script>
 
 </body>
 </html>
-
